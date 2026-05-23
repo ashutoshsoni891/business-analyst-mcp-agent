@@ -19,23 +19,32 @@ def _require_env(name: str) -> str:
 
 
 def load_config() -> dict:
-    """Load and validate all required env vars. Returns config dict."""
-    return {
+    """Load and validate env vars. Salesforce and HubSpot are optional."""
+    cfg = {
         "anthropic_api_key": _require_env("ANTHROPIC_API_KEY"),
         "atlassian_token": _require_env("ATLASSIAN_OAUTH_TOKEN"),
         "atlassian_url": _require_env("ATLASSIAN_MCP_URL"),
         "drive_token": _require_env("GOOGLE_DRIVE_OAUTH_TOKEN"),
         "drive_url": _require_env("GOOGLE_DRIVE_MCP_URL"),
-        "salesforce_token": _require_env("SALESFORCE_OAUTH_TOKEN"),
-        "salesforce_url": _require_env("SALESFORCE_MCP_URL"),
-        "hubspot_token": _require_env("HUBSPOT_OAUTH_TOKEN"),
-        "hubspot_url": _require_env("HUBSPOT_MCP_URL"),
+        "salesforce_token": os.getenv("SALESFORCE_OAUTH_TOKEN"),
+        "salesforce_url": os.getenv("SALESFORCE_MCP_URL"),
+        "hubspot_token": os.getenv("HUBSPOT_OAUTH_TOKEN"),
+        "hubspot_url": os.getenv("HUBSPOT_MCP_URL"),
     }
+    cfg["has_salesforce"] = bool(
+        cfg["salesforce_token"] and cfg["salesforce_token"] != "..."
+        and cfg["salesforce_url"] and "your-instance" not in cfg["salesforce_url"]
+    )
+    cfg["has_hubspot"] = bool(
+        cfg["hubspot_token"] and cfg["hubspot_token"] != "..."
+        and cfg["hubspot_url"]
+    )
+    return cfg
 
 
 def build_mcp_configs(cfg: dict) -> dict:
     """Build per-server MCP config dicts from loaded config."""
-    return {
+    configs = {
         "jira": {
             "type": "url",
             "url": cfg["atlassian_url"],
@@ -54,16 +63,19 @@ def build_mcp_configs(cfg: dict) -> dict:
             "name": "google_drive",
             "authorization_token": cfg["drive_token"],
         },
-        "salesforce": {
+    }
+    if cfg["has_salesforce"]:
+        configs["salesforce"] = {
             "type": "url",
             "url": cfg["salesforce_url"],
             "name": "salesforce",
             "authorization_token": cfg["salesforce_token"],
-        },
-        "hubspot": {
+        }
+    if cfg["has_hubspot"]:
+        configs["hubspot"] = {
             "type": "url",
             "url": cfg["hubspot_url"],
             "name": "hubspot",
             "authorization_token": cfg["hubspot_token"],
-        },
-    }
+        }
+    return configs

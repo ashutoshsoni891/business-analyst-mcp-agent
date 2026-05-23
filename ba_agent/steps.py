@@ -71,7 +71,35 @@ Rules:
 4. Maximum output: 600 tokens."""
 
 
-def _build_phase2_system(user_query: str, jira: "Phase1Result") -> str:
+def _build_phase2_system(user_query: str, jira: "Phase1Result", available_servers: list[str]) -> str:
+    system_list = []
+    n = 1
+    if "drive" in available_servers:
+        system_list.append(
+            f'{n}. Google Drive — search for Meet transcripts, call notes, or documents '
+            f'related to "{jira.customer_name}" and "{jira.topic}".'
+        )
+        n += 1
+    if "confluence" in available_servers:
+        system_list.append(
+            f'{n}. Confluence — search for documentation, runbooks, or post-mortems '
+            f'related to this customer or topic.'
+        )
+        n += 1
+    if "salesforce" in available_servers:
+        system_list.append(
+            f'{n}. Salesforce — find the customer account, any cases or opportunities '
+            f'related to "{jira.customer_name}".'
+        )
+        n += 1
+    if "hubspot" in available_servers:
+        system_list.append(
+            f'{n}. HubSpot — find contacts and deals associated with "{jira.customer_name}".'
+        )
+
+    systems_text = "\n".join(system_list)
+    system_count = "all" if len(system_list) > 1 else "the"
+
     return f"""\
 You are a cross-system research agent. A business analyst needs information \
 about the following Jira ticket:
@@ -83,17 +111,11 @@ Topic: {jira.topic}
 
 The analyst's original question: "{user_query}"
 
-Your task — search ALL of the following systems using the ticket context \
+Your task — search {system_count} of the following systems using the ticket context \
 above as search terms. Execute searches across all systems; do not wait for \
 one before starting another.
 
-1. Google Drive — search for Meet transcripts, call notes, or documents \
-   related to "{jira.customer_name}" and "{jira.topic}".
-2. Confluence — search for documentation, runbooks, or post-mortems \
-   related to this customer or topic.
-3. Salesforce — find the customer account, any cases or opportunities \
-   related to "{jira.customer_name}".
-4. HubSpot — find contacts and deals associated with "{jira.customer_name}".
+{systems_text}
 
 For each result, record the source system, document/record title or ID, \
 and all relevant content. Preserve all identifiers (file names, IDs, URLs). \
@@ -231,17 +253,14 @@ def run_phase2_fanout(
     jira: Phase1Result,
     debug: bool = False,
 ) -> Phase2Result:
-    """Search Drive, Confluence, Salesforce, and HubSpot using Jira context."""
-    system = _build_phase2_system(user_query, jira)
+    """Search Drive, Confluence, and optionally Salesforce/HubSpot using Jira context."""
+    available = [k for k in ("drive", "confluence", "salesforce", "hubspot") if k in mcp_configs]
+    system = _build_phase2_system(user_query, jira, available)
+    system_names = ", ".join(available)
     messages: list[dict] = [
-        {"role": "user", "content": "Please research all four systems now."}
+        {"role": "user", "content": f"Please research the following systems now: {system_names}."}
     ]
-    servers = [
-        mcp_configs["drive"],
-        mcp_configs["confluence"],
-        mcp_configs["salesforce"],
-        mcp_configs["hubspot"],
-    ]
+    servers = [mcp_configs[k] for k in available]
 
     while True:
         response = client.beta.messages.create(
